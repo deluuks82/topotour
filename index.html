@@ -39,6 +39,8 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: Arial, Helvetica, sans-serif;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
     background: #fff; min-height: 100vh;
     display: flex; flex-direction: column; align-items: center; padding: 14px;
   }
@@ -68,8 +70,17 @@
   }
   #hint-btn:hover { background: #FFE4E6; }
 
-  #game-area { position: relative; width: 470px; height: 532px; }
-  #map-svg { width: 470px; height: 532px; display: block; }
+  @media (max-width: 560px) {
+    .mode-btn { font-size: 13px; padding: 8px 16px; }
+    #hint-btn { font-size: 13px; padding: 8px 16px; }
+    #target-banner { font-size: 18px; padding: 10px 22px; min-width: 0; }
+  }
+  #game-area {
+    position: relative;
+    width: min(470px, calc(100vw - 28px));
+    aspect-ratio: 736 / 832;
+  }
+  #map-svg { width: 100%; height: 100%; display: block; }
 
   /* Provinces and countries keep their colour permanently */
   .prov, .country {
@@ -81,10 +92,11 @@
   .country { stroke: none; }
 
   .marker { cursor: pointer; }
-  .cap-dot  { fill: #1a1a1a; stroke: #fff; stroke-width: 2.5; }
+  #map-svg { touch-action: manipulation; }
+  .cap-dot  { fill: #000000; stroke: #fff; stroke-width: 2.5; }
   .cap-ring { fill: none; stroke: #fff; stroke-width: 1.3; opacity: .85; pointer-events: none; }
-  .place-dot { fill: #3a3a3a; stroke: #fff; stroke-width: 2; }
-  .place-sq  { fill: #3a3a3a; stroke: #fff; stroke-width: 2; }
+  .place-dot { fill: #000000; stroke: #fff; stroke-width: 2; }
+  .place-sq  { fill: #000000; stroke: #fff; stroke-width: 2; }
 
   #heli-wrap { position: absolute; width: 80px; height: 60px; pointer-events: none; z-index: 12; transform: translate(-50%,-50%); }
   #heli-svg { width: 80px; height: 60px; overflow: visible; }
@@ -288,6 +300,7 @@ const LABEL_BY_TYPE = {
 };
 
 let mode='provinces', targets=[], currentIdx=0, foundCount=0, points=0;
+let activeTypes=new Set();
 
 const heliWrap=document.getElementById('heli-wrap');
 const heliShadow=document.getElementById('heli-shadow');
@@ -359,6 +372,13 @@ function setMode(m,btn){
 }
 function startGame(){
   targets=shuffle(buildTargets());
+  /* Markers laten tikken alleen door als ze in deze spelvorm een doel zijn.
+     Anders zou je in de stand 'Provincies' een provincie missen omdat je vinger
+     te dicht bij een stad zat. */
+  activeTypes=new Set(targets.map(t=>t.type));
+  document.querySelectorAll('.marker').forEach(g=>{
+    g.style.pointerEvents=activeTypes.has(g.dataset.type)?'auto':'none';
+  });
   currentIdx=0; foundCount=0; points=0;
   winScreen.style.display='none';
   gameArea.style.display='block';
@@ -471,12 +491,60 @@ function showWin(){
 }
 function restartGame(){ startGame(); }
 
-document.querySelectorAll('.prov,.country').forEach(el=>{
-  el.addEventListener('click',()=>handleHit(el,el.dataset.name,el.dataset.type));
+/* Stadsstippen zijn maar een paar pixels groot, zeker op een telefoon.
+   In plaats van precies op de stip te moeten tikken, zoeken we de marker die
+   het dichtst bij je vinger zit. De marge rekenen we om naar beeldpunten, zodat
+   het tikgebied op elk schermformaat ongeveer even groot aanvoelt. */
+const mapSvg=document.getElementById('map-svg');
+const TAP_RADIUS_PX=24;
+
+const MARKERS=[...document.querySelectorAll('.marker')].map(g=>{
+  const el=g.firstElementChild;
+  let x,y;
+  if(el.tagName.toLowerCase()==='rect'){
+    x=parseFloat(el.getAttribute('x'))+parseFloat(el.getAttribute('width'))/2;
+    y=parseFloat(el.getAttribute('y'))+parseFloat(el.getAttribute('height'))/2;
+  } else {
+    x=parseFloat(el.getAttribute('cx'));
+    y=parseFloat(el.getAttribute('cy'));
+  }
+  return {el:el,x:x,y:y,name:g.dataset.name,type:g.dataset.type};
 });
-document.querySelectorAll('.marker').forEach(g=>{
-  g.addEventListener('click',()=>handleHit(g.firstElementChild,g.dataset.name,g.dataset.type));
+
+function toUserSpace(evt){
+  const ctm=mapSvg.getScreenCTM();
+  if(!ctm) return null;
+  const pt=mapSvg.createSVGPoint();
+  pt.x=evt.clientX; pt.y=evt.clientY;
+  return pt.matrixTransform(ctm.inverse());
+}
+function tapMargin(){
+  const vb=mapSvg.viewBox.baseVal, w=mapSvg.getBoundingClientRect().width;
+  if(!w) return 34;
+  return Math.max(28, Math.min(70, TAP_RADIUS_PX*(vb.width/w)));
+}
+
+mapSvg.addEventListener('click',evt=>{
+  const p=toUserSpace(evt);
+  if(p){
+    const m=tapMargin();
+    let best=null, bd=m*m;
+    for(const mk of MARKERS){
+      if(!activeTypes.has(mk.type)) continue;
+      const d=(p.x-mk.x)*(p.x-mk.x)+(p.y-mk.y)*(p.y-mk.y);
+      if(d<=bd){ bd=d; best=mk; }
+    }
+    if(best){ handleHit(best.el,best.name,best.type); return; }
+  }
+  let el=evt.target;
+  while(el && el!==mapSvg){
+    if(el.classList && (el.classList.contains('prov')||el.classList.contains('country'))){
+      handleHit(el,el.dataset.name,el.dataset.type); return;
+    }
+    el=el.parentNode;
+  }
 });
+
 window.addEventListener('resize',initCanvases);
 
 initCanvases(); startGame(); heliLoop();

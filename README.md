@@ -80,6 +80,10 @@ Alles staat in `index.html`.
   welk symbool het vliegveld was.
 - **Kleuren**: de provincies gebruiken vier roodtinten zo verdeeld dat geen twee
   buurprovincies dezelfde kleur hebben. Pas je er één aan, let dan op de buren.
+- **Tikgebied**: je hoeft niet precies op een stadsstip te tikken. De stad die het
+  dichtst bij je vinger zit wint, binnen een marge van ongeveer 48 beeldpunten.
+  Die marge staat als `TAP_RADIUS_PX` onderaan het `<script>`-blok en wordt per
+  schermformaat omgerekend, zodat hij op telefoon en laptop even groot aanvoelt.
 
 ## Herkomst van de kaart
 
