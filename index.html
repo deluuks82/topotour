@@ -1,5 +1,5 @@
 <!--
-  Nederland topografie
+  Topo Tour
 
   Kaartdata: gegeneraliseerde provinciekaart van het CBS (www.cbs.nl),
   beschikbaar via PDOK (www.pdok.nl), gebundeld in github.com/cartomap/nl.
@@ -7,6 +7,7 @@
   https://creativecommons.org/licenses/by/4.0/deed.nl
   Projectie: Rijksdriehoeksstelsel (EPSG:28992).
 
+  Online op https://deluuks82.github.io/topotour/
   De volledige bronvermelding staat in README.md.
 -->
 <!DOCTYPE html>
@@ -14,7 +15,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nederland topografie</title>
+<title>Topo Tour</title>
 <meta name="description" content="Leer de Nederlandse provincies, hoofdsteden en steden kennen met een klikspel op een natuurgetrouwe kaart.">
 <meta name="theme-color" content="#E8112D">
 
@@ -22,11 +23,16 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
 
-<!-- og:image moet een volledige URL zijn. Vervang deze regel door je eigen adres,
-     bijvoorbeeld: https://GEBRUIKERSNAAM.github.io/nederland-topografie/social-preview.png -->
-<meta property="https://deluuks82.github.io/topotour/" content="social-preview.png">
+<link rel="canonical" href="https://deluuks82.github.io/topotour/">
+<meta property="og:url" content="https://deluuks82.github.io/topotour/">
+<meta property="og:site_name" content="Topo Tour">
+<meta property="og:image" content="https://deluuks82.github.io/topotour/social-preview.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Kaart van Nederland met de twaalf provincies in rode tinten">
+<meta property="og:locale" content="nl_NL">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Nederland topografie">
+<meta property="og:title" content="Topo Tour">
 <meta property="og:description" content="Leer de Nederlandse provincies, hoofdsteden en steden kennen met een klikspel op een natuurgetrouwe kaart.">
 <meta name="twitter:card" content="summary_large_image">
 <style>
@@ -103,6 +109,9 @@
     opacity: 0; pointer-events: none; transition: opacity .3s; z-index: 24; white-space: nowrap;
   }
   canvas#confetti { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:20; }
+  #credit { font-size: 10px; color: #818180; margin-top: 8px; letter-spacing: .02em; }
+  #credit a { color: #818180; text-decoration: none; border-bottom: 1px solid #CFCFCF; }
+  #credit a:hover { color: #E8112D; border-bottom-color: #E8112D; }
   #win-screen { display: none; flex-direction: column; align-items: center; gap: 14px; padding: 30px; text-align: center; }
   #win-screen h2 { color: #E8112D; font-size: 27px; }
   #win-screen p { color: #818180; font-size: 15px; max-width: 380px; }
@@ -115,7 +124,7 @@
 </head>
 <body>
 
-<h1>Nederland topografie</h1>
+<h1>Topo Tour</h1>
 
 <div id="mode-btns">
   <button class="mode-btn active" onclick="setMode('provinces',this)">Provincies</button>
@@ -251,6 +260,7 @@
   </svg>
 </div>
 
+<div id="credit">Provinciegrenzen: <a href="https://www.cbs.nl" target="_blank" rel="noopener">CBS</a> / <a href="https://www.pdok.nl" target="_blank" rel="noopener">PDOK</a> (<a href="https://creativecommons.org/licenses/by/4.0/deed.nl" target="_blank" rel="noopener">CC BY 4.0</a>) &middot; Rijksdriehoeksstelsel</div>
 
 <div id="win-screen">
   <div style="font-size:60px">&#127942;</div>
@@ -352,6 +362,7 @@ function startGame(){
   currentIdx=0; foundCount=0; points=0;
   winScreen.style.display='none';
   gameArea.style.display='block';
+  document.getElementById('credit').style.display='block';
   document.getElementById('target-banner').style.display='block';
   document.getElementById('hint-btn').style.display='inline-block';
   document.querySelectorAll('.prov,.country,.cap-dot,.place-dot,.place-sq')
@@ -451,6 +462,7 @@ function handleHit(shapeEl,name,type){
 }
 function showWin(){
   gameArea.style.display='none';
+  document.getElementById('credit').style.display='none';
   document.getElementById('target-banner').style.display='none';
   document.getElementById('hint-btn').style.display='none';
   winScreen.style.display='flex';
