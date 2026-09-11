@@ -1,0 +1,481 @@
+<!--
+  Nederland topografie
+
+  Kaartdata: gegeneraliseerde provinciekaart van het CBS (www.cbs.nl),
+  beschikbaar via PDOK (www.pdok.nl), gebundeld in github.com/cartomap/nl.
+  Licentie: Creative Commons Naamsvermelding 4.0 (CC BY 4.0)
+  https://creativecommons.org/licenses/by/4.0/deed.nl
+  Projectie: Rijksdriehoeksstelsel (EPSG:28992).
+
+  De volledige bronvermelding staat in README.md.
+-->
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nederland topografie</title>
+<meta name="description" content="Leer de Nederlandse provincies, hoofdsteden en steden kennen met een klikspel op een natuurgetrouwe kaart.">
+<meta name="theme-color" content="#E8112D">
+
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+
+<!-- og:image moet een volledige URL zijn. Vervang deze regel door je eigen adres,
+     bijvoorbeeld: https://GEBRUIKERSNAAM.github.io/nederland-topografie/social-preview.png -->
+<meta property="og:image" content="social-preview.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Nederland topografie">
+<meta property="og:description" content="Leer de Nederlandse provincies, hoofdsteden en steden kennen met een klikspel op een natuurgetrouwe kaart.">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #fff; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; padding: 14px;
+  }
+  h1 { font-size: 13px; font-weight: 700; color: #818180; letter-spacing: .1em; margin-bottom: 10px; text-transform: uppercase; }
+  #mode-btns { display: flex; gap: 7px; margin-bottom: 10px; flex-wrap: wrap; justify-content: center; }
+  .mode-btn {
+    font-weight: 700; font-size: 12.5px;
+    border: 2px solid #E8112D; color: #E8112D; background: #fff;
+    border-radius: 20px; padding: 5px 15px; cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .mode-btn.active, .mode-btn:hover { background: #E8112D; color: #fff; }
+  #score-bar { font-size: 13px; color: #818180; margin-bottom: 6px; }
+  #score-bar b { color: #E8112D; }
+  #target-banner {
+    background: #E8112D; color: #fff; font-weight: 700; font-size: 20px;
+    padding: 10px 32px; border-radius: 32px; margin-bottom: 10px;
+    text-align: center; min-width: 280px; box-shadow: 0 2px 14px #E8112D44;
+  }
+  #progress-dots { display: flex; gap: 5px; margin-bottom: 8px; flex-wrap: wrap; justify-content: center; max-width: 480px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #CFCFCF; transition: background .3s; }
+  .dot.done { background: #E8112D; }
+  #hint-btn {
+    font-size: 12px; color: #E8112D; background: none;
+    border: 1.5px solid #FF9AA2; border-radius: 14px;
+    padding: 4px 14px; cursor: pointer; margin-bottom: 8px;
+  }
+  #hint-btn:hover { background: #FFE4E6; }
+
+  #game-area { position: relative; width: 470px; height: 532px; }
+  #map-svg { width: 470px; height: 532px; display: block; }
+
+  /* Provinces and countries keep their colour permanently */
+  .prov, .country {
+    stroke: #ffffff; stroke-width: 1.8;
+    stroke-linejoin: round; stroke-linecap: round;
+    cursor: pointer; transition: filter .15s;
+  }
+  .prov:hover, .country:hover { filter: brightness(1.12); }
+  .country { stroke: none; }
+
+  .marker { cursor: pointer; }
+  .cap-dot  { fill: #1a1a1a; stroke: #fff; stroke-width: 2.5; }
+  .cap-ring { fill: none; stroke: #fff; stroke-width: 1.3; opacity: .85; pointer-events: none; }
+  .place-dot { fill: #3a3a3a; stroke: #fff; stroke-width: 2; }
+  .place-sq  { fill: #3a3a3a; stroke: #fff; stroke-width: 2; }
+
+  #heli-wrap { position: absolute; width: 80px; height: 60px; pointer-events: none; z-index: 12; transform: translate(-50%,-50%); }
+  #heli-svg { width: 80px; height: 60px; overflow: visible; }
+  @keyframes rotor-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .main-rotor { transform-origin: 39px 10px; animation: rotor-spin .18s linear infinite; }
+  .tail-rotor { transform-origin: 74px 36px; animation: rotor-spin .12s linear infinite; }
+  @keyframes hover-bob {
+    0%,100% { transform: translate(-50%,-50%) translateY(0); }
+    50%     { transform: translate(-50%,-50%) translateY(-4px); }
+  }
+  #heli-wrap.hovering { animation: hover-bob 1.2s ease-in-out infinite; }
+  #heli-shadow {
+    position: absolute; width: 46px; height: 12px;
+    background: radial-gradient(ellipse, rgba(0,0,0,.22) 0%, transparent 78%);
+    border-radius: 50%; pointer-events: none; z-index: 11; transform: translate(-50%,-50%);
+  }
+  #trail-canvas { position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:10; }
+  #feedback {
+    position: absolute; top: 40%; left: 50%; transform: translate(-50%,-50%);
+    font-weight: 700; font-size: 21px; background: #fff;
+    border-radius: 16px; padding: 10px 26px; box-shadow: 0 4px 24px #E8112D33;
+    opacity: 0; pointer-events: none; transition: opacity .3s; z-index: 24; white-space: nowrap;
+  }
+  canvas#confetti { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:20; }
+  #win-screen { display: none; flex-direction: column; align-items: center; gap: 14px; padding: 30px; text-align: center; }
+  #win-screen h2 { color: #E8112D; font-size: 27px; }
+  #win-screen p { color: #818180; font-size: 15px; max-width: 380px; }
+  #restart-btn {
+    background: #E8112D; color: #fff; font-weight: 700; font-size: 15px;
+    border: none; border-radius: 24px; padding: 12px 34px; cursor: pointer;
+  }
+  #restart-btn:hover { background: #A3061B; }
+</style>
+</head>
+<body>
+
+<h1>Nederland topografie</h1>
+
+<div id="mode-btns">
+  <button class="mode-btn active" onclick="setMode('provinces',this)">Provincies</button>
+  <button class="mode-btn" onclick="setMode('capitals',this)">Hoofdsteden</button>
+  <button class="mode-btn" onclick="setMode('extra',this)">Steden en landen</button>
+  <button class="mode-btn" onclick="setMode('all',this)">Alles</button>
+</div>
+
+<div id="score-bar">Gevonden: <b id="score">0</b> / <b id="total">0</b> &nbsp;·&nbsp; Punten: <b id="points">0</b></div>
+<div id="progress-dots"></div>
+<button id="hint-btn" onclick="showHint()">Hint (&minus;3 punten)</button>
+<div id="target-banner">Zoek: &mdash;</div>
+
+<div id="game-area">
+  <canvas id="confetti"></canvas>
+  <canvas id="trail-canvas"></canvas>
+  <div id="feedback"></div>
+
+  <div id="heli-wrap" class="hovering">
+    <svg id="heli-svg" viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" overflow="visible">
+      <g class="main-rotor">
+        <circle cx="39" cy="10" r="3" fill="#000000"/>
+        <rect x="4" y="8.5" width="70" height="3" rx="1.5" fill="#818180" opacity=".9"/>
+        <rect x="37.5" y="-18" width="3" height="56" rx="1.5" fill="#818180" opacity=".9"/>
+      </g>
+      <rect x="48" y="30" width="26" height="7" rx="3" fill="#000000" stroke="#FFFFFF" stroke-width="1"/>
+      <polygon points="68,22 74,22 74,37 68,37" fill="#000000" stroke="#FFFFFF" stroke-width="1"/>
+      <polygon points="66,22 76,22 73,26 69,26" fill="#000000"/>
+      <ellipse cx="30" cy="32" rx="20" ry="13" fill="#000000" stroke="#FFFFFF" stroke-width="1.5"/>
+      <ellipse cx="22" cy="30" rx="9" ry="8" fill="#FFFFFF" opacity=".35"/>
+      <ellipse cx="20" cy="29" rx="5" ry="5" fill="#FFFFFF" opacity=".6"/>
+      <g class="tail-rotor">
+        <circle cx="74" cy="36" r="2" fill="#000000"/>
+        <rect x="72" y="27" width="4" height="18" rx="2" fill="#818180" opacity=".95"/>
+        <rect x="65" y="34" width="18" height="4" rx="2" fill="#818180" opacity=".95"/>
+      </g>
+      <line x1="18" y1="44" x2="18" y2="50" stroke="#818180" stroke-width="2"/>
+      <line x1="34" y1="44" x2="34" y2="50" stroke="#818180" stroke-width="2"/>
+      <line x1="12" y1="50" x2="40" y2="50" stroke="#818180" stroke-width="2.5" stroke-linecap="round"/>
+      <rect x="14" y="30" width="32" height="3" rx="1.5" fill="#FFFFFF" opacity=".3"/>
+    </svg>
+  </div>
+  <div id="heli-shadow"></div>
+
+  <svg id="map-svg" viewBox="0 0 736 832" xmlns="http://www.w3.org/2000/svg">
+    <!-- Water -->
+    <rect x="0" y="0" width="736" height="832" fill="#EDF0FA"/>
+
+    <!-- ===== BUURLANDEN (klikbaar, onder de provincies) ===== -->
+    <path class="country" data-name="Duitsland" data-type="country" fill="#CFCFCF"
+      d="M679.6,72.2L689.7,73.3L689.1,83.0L691.2,85.3L705.8,90.1L711.3,90.6L713.8,101.9L707.5,119.4L708.3,124.3L711.8,126.6L711.5,136.0L714.4,156.5L709.4,176.9L696.3,199.9L693.4,204.0L694.4,207.5L690.9,215.7L690.1,241.2L689.0,263.4L686.8,267.6L675.0,264.0L668.4,266.6L661.0,262.8L647.6,264.1L639.7,263.1L633.5,265.1L627.9,270.3L631.0,274.0L629.6,281.7L638.3,288.9L631.2,289.2L629.4,293.4L623.1,292.2L627.6,301.5L626.4,311.7L636.4,318.0L640.3,319.2L654.5,318.9L655.9,321.3L670.2,325.7L673.8,322.9L676.4,316.7L679.4,316.7L682.6,327.2L687.3,334.9L690.7,335.3L693.9,343.4L694.1,349.5L691.5,353.4L686.3,367.2L686.6,371.3L692.9,383.8L685.3,386.7L680.1,386.4L673.5,399.9L666.4,401.2L661.0,407.5L659.8,414.2L656.7,417.9L639.7,418.8L638.1,428.5L635.4,431.7L628.2,433.3L627.0,442.1L631.7,441.9L638.8,445.2L652.2,455.1L652.8,463.7L647.5,465.4L646.7,472.2L642.5,477.9L633.9,483.9L627.0,477.8L618.7,481.8L603.3,487.4L589.0,497.0L585.1,493.7L574.1,491.3L577.6,497.4L576.4,505.0L569.3,502.6L566.0,498.2L559.0,498.7L557.0,493.2L542.5,493.6L538.1,487.9L531.7,482.7L526.2,484.8L529.7,493.1L533.8,495.5L533.8,501.5L523.0,499.5L515.1,494.5L513.6,498.4L502.7,504.7L496.9,503.0L493.8,506.9L500.0,514.4L502.1,523.6L495.3,530.0L502.8,531.7L509.2,535.4L508.7,540.3L510.9,550.9L525.5,555.6L520.8,570.2L526.3,574.0L532.9,581.6L536.6,589.8L543.1,597.0L545.3,608.2L542.2,630.3L546.2,641.7L535.8,649.7L533.1,657.3L527.8,666.9L518.4,676.4L517.6,682.8L518.7,693.8L523.8,697.3L535.5,690.3L538.4,692.6L530.8,696.5L537.5,700.7L534.6,703.5L522.3,707.8L512.2,719.1L505.1,722.7L500.2,730.1L499.7,734.3L494.2,737.1L489.6,727.9L484.8,732.2L483.3,742.2L488.3,746.8L486.8,754.8L497.5,750.8L499.5,753.2L509.2,752.0L509.2,766.3L521.1,770.1L519.9,778.6L522.3,784.4L519.8,792.0L513.9,790.7L509.6,792.2L510.7,801.6L506.9,805.3L501.6,806.3L511.3,813.2L796.0,892.0 L796.0,-60.0 Z"/>
+    <path class="country" data-name="Belgie" data-type="country" fill="#CFCFCF"
+      d="M511.3,813.2L508.9,818.8L501.9,819.0L498.7,816.7L488.0,820.0L485.2,814.6L470.6,818.8L465.0,811.0L458.9,815.4L449.8,819.3L447.6,816.9L451.0,811.0L450.6,804.2L442.6,799.0L439.3,792.2L441.6,784.2L449.9,777.3L450.2,773.9L455.3,770.6L461.2,760.6L454.2,758.6L462.6,748.3L464.5,741.0L461.1,737.8L463.5,730.1L467.5,730.5L469.6,724.8L467.8,721.4L474.9,718.5L470.5,713.0L478.8,705.3L472.9,698.6L464.8,701.0L462.5,694.0L457.6,693.2L451.9,695.0L442.5,693.7L440.4,689.3L425.6,683.2L423.6,676.4L424.1,671.1L416.3,661.6L410.3,660.1L407.0,664.7L402.8,665.4L398.3,671.2L385.3,667.3L383.6,670.9L376.1,671.4L363.3,669.4L366.3,658.6L358.6,653.5L351.7,657.1L346.5,655.6L346.1,646.4L335.1,632.8L341.2,621.7L336.6,610.0L330.6,610.1L326.3,607.0L323.6,611.3L323.0,618.0L308.9,630.8L301.3,625.8L297.6,627.7L292.8,626.3L283.6,627.9L279.9,625.1L283.2,621.0L290.4,623.9L289.9,616.4L293.4,607.0L288.6,602.9L281.0,599.8L277.2,601.3L266.2,615.3L261.3,617.4L261.8,622.6L254.6,622.7L244.5,620.6L237.3,623.4L236.4,615.6L239.8,608.7L237.9,606.0L220.5,609.8L210.2,615.2L212.0,617.4L209.6,623.6L211.0,627.3L218.2,637.1L216.4,640.0L209.5,643.1L201.6,642.0L200.5,636.1L190.0,636.4L183.8,636.7L181.8,630.9L175.6,627.2L167.5,630.7L182.1,644.5L169.5,660.1L149.2,674.5L141.3,673.9L130.8,682.2L117.5,686.5L112.7,683.3L106.3,683.6L99.9,681.5L101.2,669.8L94.0,665.8L82.7,663.6L76.3,659.3L73.1,659.8L64.1,654.8L62.2,656.6L50.1,659.5L52.1,671.5L37.3,672.5L30.1,667.8L23.6,657.4L21.6,650.6L-60.0,892.0 L796.0,892.0 Z"/>
+
+    <!-- ===== PROVINCIES (CBS/PDOK grenzen, RD-projectie) ===== -->
+    <path class="prov" data-name="Groningen" data-type="province" fill="#5C0011" data-cx="664.7" data-cy="120.2"
+      d="M694.4,207.5L690.7,205.5L684.9,197.6L680.4,197.6L685.5,185.0L679.9,182.0L665.9,163.1L630.1,126.7L622.6,126.3L612.4,128.9L608.3,122.3L599.3,116.0L593.3,105.1L585.4,102.8L578.8,105.0L572.0,110.5L567.6,118.9L561.1,137.2L556.0,135.3L546.5,129.5L536.5,129.2L531.3,123.6L531.5,114.2L535.5,105.0L540.6,97.9L537.8,94.6L540.7,91.3L544.4,78.8L548.9,74.2L550.1,63.2L540.5,59.9L540.5,55.8L531.0,47.3L533.1,43.0L533.2,42.9L545.3,42.0L553.9,47.1L557.7,44.2L567.8,39.9L593.6,36.1L603.9,33.3L617.7,27.2L629.5,25.4L638.6,28.6L641.4,26.0L650.0,29.4L653.8,32.3L652.3,41.9L654.8,45.4L656.7,57.1L662.3,64.8L679.6,72.2L689.7,73.3L689.1,83.0L691.2,85.3L705.8,90.1L711.3,90.6L713.8,101.9L707.5,119.4L708.3,124.3L711.8,126.6L711.5,136.0L714.4,156.5L709.4,176.9L696.3,199.9L693.4,204.0L694.4,207.5Z"/>
+    <path class="prov" data-name="Friesland" data-type="province" fill="#E8112D" data-cx="465.0" data-cy="139.2"
+      d="M393.6,147.8L391.4,137.0L385.0,142.2L376.7,144.3L354.0,163.9L353.8,163.8L376.3,144.4L386.0,141.1L391.0,136.2L391.4,132.2L395.8,128.2L398.5,111.6L401.7,102.5L409.5,93.5L417.4,88.6L427.8,76.0L439.5,70.1L450.8,65.8L459.9,60.2L473.3,53.5L482.4,49.9L488.2,50.1L503.1,45.6L515.6,43.9L524.1,45.2L530.6,41.9L533.2,42.9L533.1,43.0L527.5,43.8L526.9,48.2L531.5,58.6L550.1,63.2L548.9,74.2L544.4,78.8L540.7,91.3L537.8,94.6L540.6,97.9L535.5,105.0L531.5,114.2L531.3,123.6L536.5,129.2L546.5,129.5L556.0,135.3L554.3,139.0L565.3,142.9L564.5,152.7L576.2,170.7L570.4,182.1L559.9,190.0L554.4,184.7L546.2,184.0L537.5,195.0L522.3,205.7L506.7,217.3L498.8,215.3L496.3,209.4L488.8,211.6L487.8,215.0L479.9,221.6L473.6,220.4L469.3,216.9L465.0,220.1L456.7,210.4L450.4,210.9L445.7,208.7L440.6,209.1L438.1,204.4L433.6,207.3L427.8,207.7L424.6,212.2L420.6,212.5L404.4,206.2L399.7,208.1L389.0,200.9L386.9,197.1L389.6,193.6L395.2,191.2L396.7,186.6L395.2,181.5L397.3,174.4L394.9,166.0L396.5,157.6L393.6,147.8ZM419.4,36.4L402.1,45.8L391.1,47.0L387.5,50.5L376.4,55.6L370.5,54.8L358.6,61.9L352.0,59.4L358.7,49.5L364.5,47.1L395.4,39.1L414.1,33.5L419.4,36.4ZM436.9,27.0L445.3,29.2L462.1,29.0L490.1,26.6L489.9,30.2L480.7,31.7L465.6,35.8L452.6,34.2L441.9,40.9L433.4,36.4L432.1,32.9L436.9,27.0ZM567.6,12.0L567.7,12.3L547.8,19.7L542.3,23.6L523.4,26.0L522.4,22.3L527.0,16.9L550.1,14.5L567.6,12.0ZM342.3,75.9L336.0,77.8L330.6,81.6L320.1,86.2L320.9,89.5L313.2,94.3L309.8,100.4L298.9,98.8L311.8,90.1L322.1,81.2L329.6,76.5L336.7,73.7L342.3,75.9Z"/>
+    <path class="prov" data-name="Drenthe" data-type="province" fill="#FF9AA2" data-cx="622.7" data-cy="207.2"
+      d="M694.4,207.5L690.9,215.7L690.1,241.2L689.0,263.4L686.8,267.6L675.0,264.0L668.4,266.6L661.0,262.8L647.6,264.1L639.7,263.1L633.5,265.1L627.9,270.3L627.5,264.2L610.7,257.1L599.8,259.8L592.9,265.5L593.9,274.9L589.1,273.5L580.4,274.6L578.3,271.0L570.3,275.6L566.4,266.8L559.5,262.1L546.3,259.2L539.6,254.5L534.1,257.8L530.5,256.5L522.7,236.1L529.1,232.3L537.0,223.2L522.3,205.7L537.5,195.0L546.2,184.0L554.4,184.7L559.9,190.0L570.4,182.1L576.2,170.7L564.5,152.7L565.3,142.9L554.3,139.0L556.0,135.3L561.1,137.2L567.6,118.9L572.0,110.5L578.8,105.0L585.4,102.8L593.3,105.1L599.3,116.0L608.3,122.3L612.4,128.9L622.6,126.3L630.1,126.7L665.9,163.1L679.9,182.0L685.5,185.0L680.4,197.6L684.9,197.6L690.7,205.5L694.4,207.5Z"/>
+    <path class="prov" data-name="Overijssel" data-type="province" fill="#5C0011" data-cx="574.8" data-cy="325.7"
+      d="M471.5,287.0L474.0,277.1L483.2,275.0L487.1,276.5L499.9,272.7L503.6,269.3L502.8,265.1L498.5,263.1L489.8,258.2L495.4,252.9L491.3,246.6L487.5,236.1L474.7,226.4L469.2,226.4L465.0,220.1L469.3,216.9L473.6,220.4L479.9,221.6L487.8,215.0L488.8,211.6L496.3,209.4L498.8,215.3L506.7,217.3L522.3,205.7L537.0,223.2L529.1,232.3L522.7,236.1L530.5,256.5L534.1,257.8L539.6,254.5L546.3,259.2L559.5,262.1L566.4,266.8L570.3,275.6L578.3,271.0L580.4,274.6L589.1,273.5L593.9,274.9L592.9,265.5L599.8,259.8L610.7,257.1L627.5,264.2L627.9,270.3L631.0,274.0L629.6,281.7L638.3,288.9L631.2,289.2L629.4,293.4L623.1,292.2L627.6,301.5L626.4,311.7L636.4,318.0L640.3,319.2L654.5,318.9L655.9,321.3L670.2,325.7L673.8,322.9L676.4,316.7L679.4,316.7L682.6,327.2L687.3,334.9L690.7,335.3L693.9,343.4L694.1,349.5L691.5,353.4L686.3,367.2L686.6,371.3L692.9,383.8L685.3,386.7L680.1,386.4L673.5,399.9L666.4,401.2L661.0,407.5L659.8,414.2L656.7,417.9L639.7,418.8L631.7,419.1L622.0,415.8L624.1,412.1L623.5,405.6L618.6,403.0L612.8,406.3L608.9,400.8L602.5,402.3L595.7,401.3L591.9,402.5L587.7,399.3L579.7,389.3L577.3,383.8L565.6,384.1L563.4,388.3L556.1,388.9L535.4,386.7L529.1,388.5L524.8,381.7L525.9,379.0L520.3,367.5L515.1,361.3L517.1,346.6L524.4,343.8L525.5,338.7L522.0,336.1L523.5,328.7L520.4,325.0L519.8,317.8L514.8,314.4L511.7,309.3L507.0,306.5L503.3,308.1L495.9,316.3L488.8,317.0L486.0,310.3L480.4,303.2L478.1,304.1L477.2,301.5L477.2,301.4L476.4,294.4L471.5,287.0Z"/>
+    <path class="prov" data-name="Gelderland" data-type="province" fill="#FF9AA2" data-cx="487.8" data-cy="432.6"
+      d="M639.7,418.8L638.1,428.5L635.4,431.7L628.2,433.3L627.0,442.1L631.7,441.9L638.8,445.2L652.2,455.1L652.8,463.7L647.5,465.4L646.7,472.2L642.5,477.9L633.9,483.9L627.0,477.8L618.7,481.8L603.3,487.4L589.0,497.0L585.1,493.7L574.1,491.3L577.6,497.4L576.4,505.0L569.3,502.6L566.0,498.2L559.0,498.7L557.0,493.2L542.5,493.6L538.1,487.9L531.7,482.7L526.2,484.8L529.7,493.1L533.8,495.5L533.8,501.5L523.0,499.5L515.1,494.5L513.6,498.4L502.7,504.7L496.9,503.0L493.8,506.9L500.0,514.4L502.1,523.6L495.3,530.0L488.5,527.7L484.5,520.4L480.1,521.0L479.3,526.3L463.9,528.0L457.7,526.0L455.2,522.2L441.1,513.7L439.0,509.1L429.3,505.5L423.7,506.1L420.6,509.4L410.7,505.6L407.0,510.9L402.3,511.4L395.4,508.1L389.5,517.2L386.7,527.2L376.3,532.7L367.0,533.3L362.9,530.7L352.3,530.9L345.8,532.3L347.6,522.0L340.0,517.7L334.3,519.1L331.5,514.7L325.6,511.6L322.8,507.9L327.5,508.5L330.7,496.8L339.2,488.2L343.2,488.5L349.9,475.1L355.5,465.2L362.5,466.4L367.4,462.3L371.7,465.9L383.1,468.3L385.8,465.2L392.0,464.8L402.7,459.9L410.6,460.5L420.4,465.3L424.2,469.0L432.3,472.3L436.0,468.2L433.7,458.5L429.7,455.3L428.7,446.6L423.5,441.5L424.4,432.9L422.8,426.5L417.2,433.1L410.2,435.4L405.8,432.4L410.6,428.4L415.2,415.6L409.7,411.8L408.3,407.9L402.3,405.8L402.1,396.0L393.9,391.4L395.7,383.7L417.5,378.7L419.7,376.1L423.7,363.3L432.9,354.8L433.4,350.0L433.6,349.8L440.3,349.1L445.0,345.1L451.6,342.4L468.4,328.5L470.6,321.3L473.6,319.4L478.1,304.1L480.4,303.2L486.0,310.3L488.8,317.0L495.9,316.3L503.3,308.1L507.0,306.5L511.7,309.3L514.8,314.4L519.8,317.8L520.4,325.0L523.5,328.7L522.0,336.1L525.5,338.7L524.4,343.8L517.1,346.6L515.1,361.3L520.3,367.5L525.9,379.0L524.8,381.7L529.1,388.5L535.4,386.7L556.1,388.9L563.4,388.3L565.6,384.1L577.3,383.8L579.7,389.3L587.7,399.3L591.9,402.5L595.7,401.3L602.5,402.3L608.9,400.8L612.8,406.3L618.6,403.0L623.5,405.6L624.1,412.1L622.0,415.8L631.7,419.1L639.7,418.8Z"/>
+    <path class="prov" data-name="Flevoland" data-type="province" fill="#A3061B" data-cx="384.6" data-cy="335.5"
+      d="M465.0,220.1L469.2,226.4L474.7,226.4L487.5,236.1L491.3,246.6L495.4,252.9L489.8,258.2L498.5,263.1L495.2,268.9L471.8,276.7L441.9,276.7L440.4,281.3L458.4,285.7L468.5,286.9L475.5,294.6L477.2,301.4L477.2,301.5L475.3,310.8L466.0,327.2L457.1,334.7L452.4,334.1L441.8,339.5L435.8,344.2L433.6,349.8L433.4,350.0L424.4,348.4L419.9,353.4L422.4,362.1L418.2,375.5L397.3,382.0L395.5,381.8L379.7,367.3L379.6,367.2L371.6,361.7L360.2,357.8L348.4,360.7L348.3,360.6L346.6,343.9L352.5,339.1L369.8,328.6L401.2,306.5L401.2,302.1L405.8,294.6L413.0,293.4L423.1,283.0L435.7,279.0L439.9,275.6L433.4,265.7L429.4,262.9L429.7,233.0L441.3,213.7L450.4,210.9L456.7,210.4L465.0,220.1Z"/>
+    <path class="prov" data-name="Utrecht" data-type="province" fill="#5C0011" data-cx="370.3" data-cy="430.2"
+      d="M378.3,374.7L388.5,377.4L395.7,383.7L393.9,391.4L402.1,396.0L402.3,405.8L408.3,407.9L409.7,411.8L415.2,415.6L410.6,428.4L405.8,432.4L410.2,435.4L417.2,433.1L422.8,426.5L424.4,432.9L423.5,441.5L428.7,446.6L429.7,455.3L433.7,458.5L436.0,468.2L432.3,472.3L424.2,469.0L420.4,465.3L410.6,460.5L402.7,459.9L392.0,464.8L385.8,465.2L383.1,468.3L371.7,465.9L367.4,462.3L362.5,466.4L355.5,465.2L349.9,475.1L346.4,474.7L338.8,470.2L332.8,462.5L327.0,464.5L322.6,462.1L317.2,467.4L312.1,466.2L307.8,472.1L300.9,473.6L297.8,464.8L290.2,455.5L297.3,453.7L295.5,450.1L287.6,451.2L292.4,440.9L299.4,437.0L291.9,433.6L291.7,424.1L285.8,419.6L289.1,414.9L293.3,413.2L300.7,414.9L300.6,409.9L289.9,396.5L286.5,389.2L293.1,387.9L299.9,382.0L307.5,381.7L310.7,376.6L327.4,367.3L331.1,373.2L328.2,378.5L333.7,386.9L329.9,390.1L331.6,407.2L345.6,402.9L357.9,403.8L362.2,395.8L363.4,390.0L371.1,373.5L378.3,374.7Z"/>
+    <path class="prov" data-name="Noord-Holland" data-type="province" fill="#FF9AA2" data-cx="291.1" data-cy="315.9"
+      d="M375.0,254.1L375.0,254.3L367.8,255.6L365.9,263.9L359.3,269.9L346.7,274.7L345.5,271.0L339.8,268.1L336.1,270.3L332.1,268.3L327.4,271.6L327.6,281.6L329.5,289.9L331.5,291.8L335.7,303.0L339.1,308.6L334.4,313.8L334.8,319.1L332.5,327.4L338.3,328.2L335.7,334.9L333.0,335.0L325.9,343.4L325.8,346.5L318.9,348.0L327.0,354.0L330.1,358.3L337.4,356.5L348.3,360.6L348.4,360.7L354.6,367.0L367.9,364.6L375.0,368.9L379.6,367.2L379.7,367.3L376.7,370.3L378.3,374.7L371.1,373.5L363.4,390.0L362.2,395.8L357.9,403.8L345.6,402.9L331.6,407.2L329.9,390.1L333.7,386.9L328.2,378.5L331.1,373.2L327.4,367.3L310.7,376.6L307.5,381.7L299.9,382.0L293.1,387.9L286.5,389.2L274.0,393.2L273.9,387.4L264.3,387.8L257.5,392.0L243.9,390.9L246.1,376.5L249.8,372.9L254.0,363.5L249.0,362.0L245.4,364.6L233.0,359.0L243.9,332.7L245.5,324.8L244.4,320.6L249.3,312.2L253.6,294.0L259.1,255.5L260.3,242.4L262.5,232.0L267.6,218.5L273.1,197.2L274.3,179.4L277.1,174.2L282.8,173.4L289.5,177.1L287.8,182.9L292.0,190.0L300.9,195.4L308.0,194.6L313.7,191.2L318.7,184.0L325.0,182.4L331.2,183.1L353.8,163.8L354.0,163.9L331.3,183.7L333.0,185.8L344.5,208.8L342.6,229.5L350.4,239.8L355.4,239.8L358.4,235.3L370.0,235.8L374.3,239.1L375.0,254.1ZM300.2,109.8L307.5,125.4L306.6,140.5L297.7,153.5L292.8,154.9L286.7,162.8L281.4,162.2L275.4,167.8L273.3,156.1L275.8,144.7L278.4,138.7L297.0,109.9L300.2,109.8Z"/>
+    <path class="prov" data-name="Zuid-Holland" data-type="province" fill="#A3061B" data-cx="231.1" data-cy="477.5"
+      d="M165.1,505.6L158.9,503.7L155.3,499.6L150.7,505.9L171.2,518.4L176.5,519.9L190.9,535.4L200.6,541.1L214.3,542.6L212.6,544.0L207.5,544.9L207.2,548.6L201.3,552.7L191.9,555.1L184.2,553.5L175.4,546.6L169.6,546.6L169.3,546.3L169.3,542.5L160.9,539.1L153.8,538.9L150.4,536.0L147.3,529.8L145.6,517.9L139.7,511.0L132.6,510.6L123.1,513.3L118.3,516.6L115.3,523.5L112.9,524.0L112.3,523.4L117.2,515.6L115.5,510.6L118.0,505.7L126.8,503.1L134.6,498.9L143.0,496.9L148.3,505.0L154.2,497.6L147.3,486.0L152.5,478.6L149.5,475.7L142.4,477.9L140.1,476.4L141.6,468.2L144.3,464.7L145.0,458.4L151.3,455.3L159.8,458.2L165.3,453.3L190.0,424.6L202.3,411.7L212.8,397.2L224.0,377.6L233.0,359.0L245.4,364.6L249.0,362.0L254.0,363.5L249.8,372.9L246.1,376.5L243.9,390.9L257.5,392.0L264.3,387.8L273.9,387.4L274.0,393.2L286.5,389.2L289.9,396.5L300.6,409.9L300.7,414.9L293.3,413.2L289.1,414.9L285.8,419.6L291.7,424.1L291.9,433.6L299.4,437.0L292.4,440.9L287.6,451.2L295.5,450.1L297.3,453.7L290.2,455.5L297.8,464.8L300.9,473.6L307.8,472.1L312.1,466.2L317.2,467.4L322.6,462.1L327.0,464.5L332.8,462.5L338.8,470.2L346.4,474.7L349.9,475.1L343.2,488.5L339.2,488.2L330.7,496.8L327.5,508.5L322.8,507.9L311.2,505.7L302.4,508.6L296.4,513.6L286.0,513.8L278.4,519.1L274.9,526.6L263.7,535.7L258.0,537.2L256.7,537.6L256.6,537.6L253.5,535.9L242.4,541.2L237.0,542.0L226.0,538.0L216.8,536.7L204.1,529.1L186.5,522.4L181.5,513.5L174.6,510.9L170.1,505.7L165.1,505.6ZM202.0,530.2L202.4,534.3L195.9,533.1L189.2,526.1L202.0,530.2Z"/>
+    <path class="prov" data-name="Zeeland" data-type="province" fill="#FF9AA2" data-cx="91.1" data-cy="594.2"
+      d="M159.1,558.0L162.7,554.9L171.6,554.9L176.4,559.8L183.9,561.0L176.6,565.6L176.1,574.0L181.9,581.5L183.2,587.5L179.9,598.7L190.0,622.1L187.7,624.6L188.4,634.2L190.0,636.4L183.8,636.7L181.8,630.9L175.6,627.2L167.5,630.7L153.9,626.6L148.1,621.0L140.4,615.8L135.3,610.3L125.3,615.3L126.1,618.2L121.3,629.7L116.8,628.9L105.1,632.1L94.9,623.3L88.6,620.0L77.8,610.1L74.1,614.5L61.1,615.0L53.2,608.4L48.2,599.5L40.0,593.3L36.8,588.7L37.7,585.0L46.6,578.5L58.7,571.9L64.6,570.1L74.8,571.7L82.3,569.0L83.1,562.0L88.8,556.7L89.9,554.9L89.2,553.3L90.6,552.7L90.2,550.2L88.0,549.5L84.7,546.2L83.0,537.7L89.9,529.5L103.2,527.3L107.9,528.4L112.3,523.4L112.9,524.0L114.1,529.5L121.0,527.7L125.8,531.5L136.5,531.3L142.4,540.1L143.8,544.9L149.1,545.6L157.6,550.9L161.7,547.4L169.3,546.3L169.6,546.6L160.8,549.0L158.4,556.6L152.9,561.5L149.8,561.2L142.5,565.1L134.9,565.9L127.7,561.6L120.7,560.5L118.6,550.1L115.2,547.0L109.2,545.2L107.3,541.0L96.4,547.3L91.2,549.0L90.6,552.6L91.4,554.4L90.1,554.8L89.1,558.0L83.9,562.6L83.2,569.6L90.5,571.6L97.3,569.4L110.6,567.9L115.5,569.6L120.8,577.9L116.2,587.2L127.0,586.2L132.4,590.2L140.0,593.3L147.8,598.7L150.6,606.6L156.7,615.4L163.9,619.8L172.8,616.3L180.4,617.9L178.9,602.4L171.9,599.2L170.0,593.3L154.4,592.1L149.3,584.3L141.4,577.6L138.7,572.3L144.9,571.2L154.8,566.6L160.1,569.6L165.5,570.3L159.1,558.0ZM86.0,594.7L89.3,591.8L84.4,582.6L77.6,577.8L86.0,594.7ZM48.8,624.4L56.5,625.3L64.4,630.8L82.2,635.7L88.8,642.4L100.6,642.5L110.3,646.7L114.8,646.7L124.1,639.6L131.7,638.5L134.8,626.5L142.5,628.3L148.5,638.6L154.9,639.3L162.6,645.7L168.8,644.9L172.0,638.2L177.9,637.7L182.1,644.5L169.5,660.1L149.2,674.5L141.3,673.9L130.8,682.2L117.5,686.5L112.7,683.3L106.3,683.6L99.9,681.5L101.2,669.8L94.0,665.8L82.7,663.6L76.3,659.3L73.1,659.8L64.1,654.8L62.2,656.6L50.1,659.5L52.1,671.5L37.3,672.5L30.1,667.8L23.6,657.4L21.6,650.6L26.7,645.2L24.1,634.1L34.1,629.0L45.6,626.9L48.8,624.4Z"/>
+    <path class="prov" data-name="Noord-Brabant" data-type="province" fill="#5C0011" data-cx="406.6" data-cy="594.4"
+      d="M479.3,526.3L482.0,528.5L483.3,535.3L495.9,540.3L499.1,558.8L507.8,565.7L509.0,573.4L511.3,576.7L510.3,584.7L505.2,580.9L492.6,585.8L487.4,586.3L484.6,583.9L474.9,582.1L477.6,600.3L481.2,616.1L492.2,635.1L481.9,644.3L444.9,655.7L436.5,667.8L435.3,680.7L425.6,683.2L423.6,676.4L424.1,671.1L416.3,661.6L410.3,660.1L407.0,664.7L402.8,665.4L398.3,671.2L385.3,667.3L383.6,670.9L376.1,671.4L363.3,669.4L366.3,658.6L358.6,653.5L351.7,657.1L346.5,655.6L346.1,646.4L335.1,632.8L341.2,621.7L336.6,610.0L330.6,610.1L326.3,607.0L323.6,611.3L323.0,618.0L308.9,630.8L301.3,625.8L297.6,627.7L292.8,626.3L283.6,627.9L279.9,625.1L283.2,621.0L290.4,623.9L289.9,616.4L293.4,607.0L288.6,602.9L281.0,599.8L277.2,601.3L266.2,615.3L261.3,617.4L261.8,622.6L254.6,622.7L244.5,620.6L237.3,623.4L236.4,615.6L239.8,608.7L237.9,606.0L220.5,609.8L210.2,615.2L212.0,617.4L209.6,623.6L211.0,627.3L218.2,637.1L216.4,640.0L209.5,643.1L201.6,642.0L200.5,636.1L190.0,636.4L188.4,634.2L187.7,624.6L190.0,622.1L179.9,598.7L183.2,587.5L181.9,581.5L176.1,574.0L176.6,565.6L183.9,561.0L186.6,561.7L198.5,557.7L201.4,558.2L208.6,554.7L211.4,551.2L212.6,544.0L214.3,542.6L220.9,543.2L230.4,547.7L250.3,543.5L256.6,537.6L256.7,537.6L258.0,537.2L263.7,535.7L274.9,526.6L278.4,519.1L286.0,513.8L296.4,513.6L302.4,508.6L311.2,505.7L322.8,507.9L325.6,511.6L331.5,514.7L334.3,519.1L340.0,517.7L347.6,522.0L345.8,532.3L352.3,530.9L362.9,530.7L367.0,533.3L376.3,532.7L386.7,527.2L389.5,517.2L395.4,508.1L402.3,511.4L407.0,510.9L410.7,505.6L420.6,509.4L423.7,506.1L429.3,505.5L439.0,509.1L441.1,513.7L455.2,522.2L457.7,526.0L463.9,528.0L479.3,526.3Z"/>
+    <path class="prov" data-name="Limburg" data-type="province" fill="#A3061B" data-cx="513.5" data-cy="614.0"
+      d="M495.3,530.0L502.8,531.7L509.2,535.4L508.7,540.3L510.9,550.9L525.5,555.6L520.8,570.2L526.3,574.0L532.9,581.6L536.6,589.8L543.1,597.0L545.3,608.2L542.2,630.3L546.2,641.7L535.8,649.7L533.1,657.3L527.8,666.9L518.4,676.4L517.6,682.8L518.7,693.8L523.8,697.3L535.5,690.3L538.4,692.6L530.8,696.5L537.5,700.7L534.6,703.5L522.3,707.8L512.2,719.1L505.1,722.7L500.2,730.1L499.7,734.3L494.2,737.1L489.6,727.9L484.8,732.2L483.3,742.2L488.3,746.8L486.8,754.8L497.5,750.8L499.5,753.2L509.2,752.0L509.2,766.3L521.1,770.1L519.9,778.6L522.3,784.4L519.8,792.0L513.9,790.7L509.6,792.2L510.7,801.6L506.9,805.3L501.6,806.3L511.3,813.2L508.9,818.8L501.9,819.0L498.7,816.7L488.0,820.0L485.2,814.6L470.6,818.8L465.0,811.0L458.9,815.4L449.8,819.3L447.6,816.9L451.0,811.0L450.6,804.2L442.6,799.0L439.3,792.2L441.6,784.2L449.9,777.3L450.2,773.9L455.3,770.6L461.2,760.6L454.2,758.6L462.6,748.3L464.5,741.0L461.1,737.8L463.5,730.1L467.5,730.5L469.6,724.8L467.8,721.4L474.9,718.5L470.5,713.0L478.8,705.3L472.9,698.6L464.8,701.0L462.5,694.0L457.6,693.2L451.9,695.0L442.5,693.7L440.4,689.3L425.6,683.2L435.3,680.7L436.5,667.8L444.9,655.7L481.9,644.3L492.2,635.1L481.2,616.1L477.6,600.3L474.9,582.1L484.6,583.9L487.4,586.3L492.6,585.8L505.2,580.9L510.3,584.7L511.3,576.7L509.0,573.4L507.8,565.7L499.1,558.8L495.9,540.3L483.3,535.3L482.0,528.5L479.3,526.3L480.1,521.0L484.5,520.4L488.5,527.7L495.3,530.0Z"/>
+
+    <!-- ===== PROVINCIEHOOFDSTEDEN ===== -->
+    <g class="marker" data-name="Leeuwarden" data-type="city">
+      <circle class="cap-dot" cx="466.3" cy="99.5" r="7"/><circle class="cap-ring" cx="466.3" cy="99.5" r="11"/>
+    </g>
+    <g class="marker" data-name="Groningen" data-type="city">
+      <circle class="cap-dot" cx="598.8" cy="98.2" r="7"/><circle class="cap-ring" cx="598.8" cy="98.2" r="11"/>
+    </g>
+    <g class="marker" data-name="Assen" data-type="city">
+      <circle class="cap-dot" cx="597.5" cy="163.8" r="7"/><circle class="cap-ring" cx="597.5" cy="163.8" r="11"/>
+    </g>
+    <g class="marker" data-name="Zwolle" data-type="city">
+      <circle class="cap-dot" cx="518.8" cy="304.2" r="7"/><circle class="cap-ring" cx="518.8" cy="304.2" r="11"/>
+    </g>
+    <g class="marker" data-name="Lelystad" data-type="city">
+      <circle class="cap-dot" cx="407.2" cy="317.3" r="7"/><circle class="cap-ring" cx="407.2" cy="317.3" r="11"/>
+    </g>
+    <g class="marker" data-name="Haarlem" data-type="city">
+      <circle class="cap-dot" cx="257.1" cy="344.9" r="7"/><circle class="cap-ring" cx="257.1" cy="344.9" r="11"/>
+    </g>
+    <g class="marker" data-name="Den Haag" data-type="city">
+      <circle class="cap-dot" cx="198.1" cy="431.5" r="7"/><circle class="cap-ring" cx="198.1" cy="431.5" r="11"/>
+    </g>
+    <g class="marker" data-name="Utrecht" data-type="city">
+      <circle class="cap-dot" cx="342.9" cy="428.9" r="7"/><circle class="cap-ring" cx="342.9" cy="428.9" r="11"/>
+    </g>
+    <g class="marker" data-name="Arnhem" data-type="city">
+      <circle class="cap-dot" cx="486.0" cy="460.3" r="7"/><circle class="cap-ring" cx="486.0" cy="460.3" r="11"/>
+    </g>
+    <g class="marker" data-name="Middelburg" data-type="city">
+      <circle class="cap-dot" cx="66.1" cy="594.2" r="7"/><circle class="cap-ring" cx="66.1" cy="594.2" r="11"/>
+    </g>
+    <g class="marker" data-name="'s-Hertogenbosch" data-type="city">
+      <circle class="cap-dot" cx="378.4" cy="545.6" r="7"/><circle class="cap-ring" cx="378.4" cy="545.6" r="11"/>
+    </g>
+    <g class="marker" data-name="Maastricht" data-type="city">
+      <circle class="cap-dot" cx="449.2" cy="792.3" r="7"/><circle class="cap-ring" cx="449.2" cy="792.3" r="11"/>
+    </g>
+
+    <!-- ===== ANDERE STEDEN ===== -->
+    <g class="marker" data-name="Rotterdam" data-type="place">
+      <circle class="place-dot" cx="229.6" cy="477.1" r="6"/>
+    </g>
+    <g class="marker" data-name="Enschede" data-type="place">
+      <circle class="place-dot" cx="661.8" cy="386.9" r="6"/>
+    </g>
+    <g class="marker" data-name="Eindhoven" data-type="place">
+      <circle class="place-dot" cx="409.9" cy="620.4" r="6"/>
+    </g>
+    <!-- Schiphol: vierkant (vliegveld) -->
+    <g class="marker" data-name="Schiphol" data-type="place">
+      <rect class="place-sq" x="274.0" y="361.2" width="12" height="12" rx="2"/>
+    </g>
+  </svg>
+</div>
+
+
+<div id="win-screen">
+  <div style="font-size:60px">&#127942;</div>
+  <h2>Geweldig gedaan!</h2>
+  <p id="win-msg"></p>
+  <button id="restart-btn" onclick="restartGame()">Opnieuw spelen</button>
+</div>
+
+<script>
+const PROVINCES = ["Groningen","Friesland","Drenthe","Overijssel","Gelderland","Flevoland",
+                   "Noord-Holland","Zuid-Holland","Utrecht","Zeeland","Noord-Brabant","Limburg"];
+const CAPITALS  = ["Groningen","Leeuwarden","Assen","Zwolle","Arnhem","Lelystad","Haarlem",
+                   "Den Haag","Utrecht","Middelburg","'s-Hertogenbosch","Maastricht"];
+const PLACES    = ["Rotterdam","Enschede","Eindhoven","Schiphol"];
+const COUNTRIES = ["Duitsland","Belgie"];
+
+const DISPLAY = { "Belgie": "Belgi\u00EB" };
+function label(n){ return DISPLAY[n] || n; }
+
+const LABEL_BY_TYPE = {
+  province: "Provincie",
+  city:     "Hoofdstad",
+  place:    "Plaats",
+  country:  "Land"
+};
+
+let mode='provinces', targets=[], currentIdx=0, foundCount=0, points=0;
+
+const heliWrap=document.getElementById('heli-wrap');
+const heliShadow=document.getElementById('heli-shadow');
+const gameArea=document.getElementById('game-area');
+const winScreen=document.getElementById('win-screen');
+const feedback=document.getElementById('feedback');
+const confettiCv=document.getElementById('confetti');
+const confettiCx=confettiCv.getContext('2d');
+const trailCv=document.getElementById('trail-canvas');
+const trailCx=trailCv.getContext('2d');
+
+let particles=[], confAnimId=null;
+let heliX=235, heliY=266, heliTargetX=235, heliTargetY=266, isFlying=false;
+let trailPoints=[];
+
+function initCanvases(){
+  trailCv.width=gameArea.offsetWidth; trailCv.height=gameArea.offsetHeight;
+  confettiCv.width=gameArea.offsetWidth; confettiCv.height=gameArea.offsetHeight;
+}
+function drawTrail(){
+  trailCx.clearRect(0,0,trailCv.width,trailCv.height);
+  for(let i=1;i<trailPoints.length;i++){
+    const a=trailPoints[i-1], b=trailPoints[i];
+    const al=Math.max(0,1-b.age/38);
+    trailCx.beginPath(); trailCx.moveTo(a.x,a.y); trailCx.lineTo(b.x,b.y);
+    trailCx.strokeStyle='rgba(232,17,45,'+(al*0.38)+')';
+    trailCx.lineWidth=3*al; trailCx.lineCap='round'; trailCx.stroke();
+  }
+  trailPoints.forEach(p=>p.age++);
+  trailPoints=trailPoints.filter(p=>p.age<38);
+}
+function heliLoop(){
+  const dx=heliTargetX-heliX, dy=heliTargetY-heliY;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist>1.5){
+    const sp=Math.min(dist*0.12,18);
+    heliX+=dx/dist*sp; heliY+=dy/dist*sp;
+    const tilt=Math.max(-22,Math.min(22,dx/dist*20));
+    heliWrap.style.transform='translate(-50%,-50%) rotate('+tilt.toFixed(1)+'deg)';
+    trailPoints.push({x:heliX,y:heliY,age:0});
+    isFlying=true; heliWrap.classList.remove('hovering');
+  } else if(isFlying){
+    heliX=heliTargetX; heliY=heliTargetY; isFlying=false;
+    heliWrap.style.transform='translate(-50%,-50%) rotate(0deg)';
+    heliWrap.classList.add('hovering');
+  }
+  heliWrap.style.left=heliX+'px'; heliWrap.style.top=heliY+'px';
+  heliShadow.style.left=heliX+'px'; heliShadow.style.top=(heliY+26)+'px';
+  drawTrail();
+  requestAnimationFrame(heliLoop);
+}
+function moveHeli(x,y){ heliTargetX=x; heliTargetY=y; }
+
+function shuffle(a){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function buildTargets(){
+  if(mode==='provinces') return PROVINCES.map(n=>({name:n,type:'province'}));
+  if(mode==='capitals')  return CAPITALS.map(n=>({name:n,type:'city'}));
+  if(mode==='extra')     return PLACES.map(n=>({name:n,type:'place'}))
+                                .concat(COUNTRIES.map(n=>({name:n,type:'country'})));
+  return PROVINCES.map(n=>({name:n,type:'province'}))
+    .concat(CAPITALS.map(n=>({name:n,type:'city'})))
+    .concat(PLACES.map(n=>({name:n,type:'place'})))
+    .concat(COUNTRIES.map(n=>({name:n,type:'country'})));
+}
+function setMode(m,btn){
+  mode=m;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); startGame();
+}
+function startGame(){
+  targets=shuffle(buildTargets());
+  currentIdx=0; foundCount=0; points=0;
+  winScreen.style.display='none';
+  gameArea.style.display='block';
+  document.getElementById('target-banner').style.display='block';
+  document.getElementById('hint-btn').style.display='inline-block';
+  document.querySelectorAll('.prov,.country,.cap-dot,.place-dot,.place-sq')
+    .forEach(e=>{ e.style.filter=''; });
+  trailPoints=[]; initCanvases(); updateUI();
+}
+function updateUI(){
+  document.getElementById('score').textContent=foundCount;
+  document.getElementById('total').textContent=targets.length;
+  document.getElementById('points').textContent=points;
+  if(currentIdx<targets.length){
+    const t=targets[currentIdx];
+    document.getElementById('target-banner').textContent=
+      LABEL_BY_TYPE[t.type]+': '+label(t.name);
+  }
+  const d=document.getElementById('progress-dots'); d.innerHTML='';
+  targets.forEach((_,i)=>{const e=document.createElement('div');e.className='dot'+(i<currentIdx?' done':'');d.appendChild(e);});
+}
+function getSVGCenter(el){
+  const svg=document.getElementById('map-svg');
+  const sr=svg.getBoundingClientRect(), gr=gameArea.getBoundingClientRect();
+  const vb=svg.viewBox.baseVal;
+  const sx=sr.width/vb.width, sy=sr.height/vb.height;
+  let ux, uy;
+  if(el.dataset && el.dataset.cx!==undefined){
+    ux=parseFloat(el.dataset.cx); uy=parseFloat(el.dataset.cy);
+  } else {
+    const bb=el.getBBox();
+    ux=bb.x+bb.width/2; uy=bb.y+bb.height/2;
+  }
+  return {
+    x:(ux-vb.x)*sx+(sr.left-gr.left),
+    y:(uy-vb.y)*sy+(sr.top-gr.top)
+  };
+}
+function showFeedback(msg,good){
+  feedback.textContent=msg;
+  feedback.style.color=good?'#E8112D':'#818180';
+  feedback.style.opacity='1';
+  setTimeout(()=>{feedback.style.opacity='0';},1000);
+}
+function findTargetEl(t){
+  if(t.type==='province') return document.querySelector('.prov[data-name="'+t.name+'"]');
+  if(t.type==='country')  return document.querySelector('.country[data-name="'+t.name+'"]');
+  const g=document.querySelector('.marker[data-name="'+t.name+'"]');
+  return g ? g.firstElementChild : null;
+}
+function flashHint(){
+  if(currentIdx>=targets.length) return;
+  const el=findTargetEl(targets[currentIdx]);
+  if(!el) return;
+  [0,450,900].forEach((d,i)=>setTimeout(()=>{
+    el.style.filter = i%2===0 ? 'brightness(1.9) saturate(0.2)' : '';
+  },d));
+  setTimeout(()=>{el.style.filter='';},1350);
+}
+function showHint(){ points=Math.max(0,points-3); updateUI(); flashHint(); }
+
+function launchConfetti(){
+  initCanvases(); particles=[];
+  const cols=['#E8112D','#A3061B','#5C0011','#FF9AA2','#FFE4E6','#000000'];
+  for(let i=0;i<90;i++) particles.push({
+    x:Math.random()*confettiCv.width, y:-20-Math.random()*confettiCv.height*0.3,
+    r:4+Math.random()*5, color:cols[Math.floor(Math.random()*cols.length)],
+    dx:(Math.random()-.5)*4, dy:2+Math.random()*5,
+    rot:Math.random()*360, drot:(Math.random()-.5)*10
+  });
+  if(confAnimId) cancelAnimationFrame(confAnimId);
+  animConf();
+  setTimeout(()=>{cancelAnimationFrame(confAnimId);confettiCx.clearRect(0,0,confettiCv.width,confettiCv.height);},2200);
+}
+function animConf(){
+  confettiCx.clearRect(0,0,confettiCv.width,confettiCv.height);
+  particles.forEach(p=>{
+    confettiCx.save(); confettiCx.translate(p.x,p.y); confettiCx.rotate(p.rot*Math.PI/180);
+    confettiCx.fillStyle=p.color; confettiCx.beginPath();
+    confettiCx.ellipse(0,0,p.r,p.r*.5,0,0,2*Math.PI); confettiCx.fill(); confettiCx.restore();
+    p.x+=p.dx; p.y+=p.dy; p.rot+=p.drot;
+  });
+  confAnimId=requestAnimationFrame(animConf);
+}
+function handleHit(shapeEl,name,type){
+  if(currentIdx>=targets.length) return;
+  const t=targets[currentIdx];
+  const c=getSVGCenter(shapeEl);
+  moveHeli(c.x,c.y);
+  if(t.name===name && t.type===type){
+    points+=10; foundCount++;
+    showFeedback('Gevonden! +10',true);
+    launchConfetti(); currentIdx++;
+    setTimeout(()=>{updateUI(); if(currentIdx>=targets.length) setTimeout(showWin,600);},900);
+  } else {
+    points=Math.max(0,points-2);
+    showFeedback('Niet die! \u22122',false);
+    updateUI();
+  }
+}
+function showWin(){
+  gameArea.style.display='none';
+  document.getElementById('target-banner').style.display='none';
+  document.getElementById('hint-btn').style.display='none';
+  winScreen.style.display='flex';
+  document.getElementById('win-msg').textContent=
+    'Je hebt alle '+targets.length+' gebieden gevonden met '+points+' punten. Jij kent Nederland nu van boven!';
+}
+function restartGame(){ startGame(); }
+
+document.querySelectorAll('.prov,.country').forEach(el=>{
+  el.addEventListener('click',()=>handleHit(el,el.dataset.name,el.dataset.type));
+});
+document.querySelectorAll('.marker').forEach(g=>{
+  g.addEventListener('click',()=>handleHit(g.firstElementChild,g.dataset.name,g.dataset.type));
+});
+window.addEventListener('resize',initCanvases);
+
+initCanvases(); startGame(); heliLoop();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+</script>
+</body>
+</html>
